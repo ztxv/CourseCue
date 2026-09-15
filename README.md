@@ -2,7 +2,7 @@
 
 # CourseCue
 
-<img width="2129" height="1227" alt="image" src="https://github.com/user-attachments/assets/d32ec534-211b-43b0-9380-56f808bc265a" />
+<img width="1505" height="1187" alt="image" src="https://github.com/user-attachments/assets/1f3d781a-62dc-4e36-90ea-57998ee9833f" />
 
 
 
