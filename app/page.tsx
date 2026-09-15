@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from 'react';
+import { FileUp } from 'lucide-react';
 import { RemoveCourseButton } from '@/components/remove-course-button';
 import { SemesterDashboard } from '@/components/semester-dashboard';
 import { ThemeToggleButton, type Theme } from '@/components/theme-toggle-button';
@@ -15,6 +16,8 @@ const CALENDAR_EVENTS_KEY = 'coursecue-calendar-events-v1';
 const CALENDAR_CONNECTION_KEY = 'coursecue-calendar-connection-v1';
 const MAX_COURSES = 5;
 type AppView = 'course' | 'semester';
+type SelectedSyllabusFile = { name: string; data: string; type: string; original: File };
+type AnalyzeOptions = { fileOverride?: SelectedSyllabusFile; textOverride?: string; fromDrop?: boolean };
 
 function normalizeCourse(course: CourseAnalysis): CourseAnalysis {
   return {
@@ -69,11 +72,31 @@ function MakerCredit() {
   return <footer className="maker-credit">made by <a href="https://github.com/ztxv" target="_blank" rel="noreferrer">ztxv</a></footer>;
 }
 
+function FileDropOverlay({ visible, blocked, busy }: { visible: boolean; blocked: boolean; busy: boolean }) {
+  const heading = blocked ? 'Your semester is full' : busy ? 'Analysis in progress' : 'Drop to analyze';
+  const copy = blocked ? 'Delete a saved syllabus before adding another.' : busy ? 'Let the current syllabus finish first.' : 'Release your syllabus anywhere. Analysis starts instantly.';
+  return (
+    <div className={`global-drop-overlay ${visible ? 'visible' : ''}`} aria-hidden={!visible}>
+      <div className={`global-drop-card ${blocked || busy ? 'blocked' : ''}`}>
+        <span className="global-drop-icon"><FileUp aria-hidden="true" /></span>
+        <strong>{heading}</strong>
+        <p>{copy}</p>
+        {!blocked && !busy && <small>PDF, DOCX, TXT, or Markdown · up to 10 MB</small>}
+      </div>
+    </div>
+  );
+}
+
+function DropStatus({ fileName, message }: { fileName: string; message: string }) {
+  if (!fileName && !message) return null;
+  return <div className={`drop-status ${message ? 'error' : ''}`} role="status">{message ? <span>!</span> : <i className="spinner" />}<strong>{message || `Analyzing ${fileName}…`}</strong></div>;
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<Theme>('light');
   const [method, setMethod] = useState<'paste' | 'upload'>('upload');
   const [syllabus, setSyllabus] = useState('');
-  const [file, setFile] = useState<{ name: string; data: string; type: string; original: File } | null>(null);
+  const [file, setFile] = useState<SelectedSyllabusFile | null>(null);
   const [analysis, setAnalysis] = useState<CourseAnalysis | null>(null);
   const [courses, setCourses] = useState<CourseAnalysis[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
@@ -82,7 +105,12 @@ export default function Home() {
   const [view, setView] = useState<AppView>('course');
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarConnection, setCalendarConnection] = useState<CalendarConnection | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [autoAnalyzingFile, setAutoAnalyzingFile] = useState('');
+  const [dropNotice, setDropNotice] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const dropNoticeTimer = useRef<number | null>(null);
   const atCourseLimit = courses.length >= MAX_COURSES;
 
   useEffect(() => {
@@ -113,7 +141,10 @@ export default function Home() {
       setCalendarEvents(storedEvents);
       setCalendarConnection(storedConnection);
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (dropNoticeTimer.current) window.clearTimeout(dropNoticeTimer.current);
+    };
   }, []);
 
   function toggleTheme() {
@@ -166,10 +197,24 @@ export default function Home() {
     return storeCalendarImport(payload.events, payload.calendarName || 'Canvas calendar');
   }
 
-  async function analyze() {
-    if (!syllabus.trim() && !file) return;
+  function showDropNotice(message: string) {
+    setDropNotice(message);
+    if (dropNoticeTimer.current) window.clearTimeout(dropNoticeTimer.current);
+    dropNoticeTimer.current = window.setTimeout(() => setDropNotice(''), 4200);
+  }
+
+  async function analyze(options?: AnalyzeOptions) {
+    const activeFile = options?.fileOverride ?? file;
+    const activeText = (options?.textOverride ?? syllabus).trim();
+    if (!activeText && !activeFile) return;
+    if (analyzing) {
+      if (options?.fromDrop) showDropNotice('A syllabus is already being analyzed.');
+      return;
+    }
     if (atCourseLimit) {
-      setError(`You can save up to ${MAX_COURSES} syllabi. Delete one from your Semester dashboard before adding another.`);
+      const message = `You can save up to ${MAX_COURSES} syllabi. Delete one from your Semester dashboard before adding another.`;
+      setError(message);
+      if (options?.fromDrop) showDropNotice(message);
       return;
     }
     setAnalyzing(true);
@@ -177,14 +222,14 @@ export default function Home() {
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: syllabus.trim(), fileData: file?.data || '', fileName: file?.name || 'Pasted syllabus' }),
+        body: JSON.stringify({ text: activeText, fileData: activeFile?.data || '', fileName: activeFile?.name || 'Pasted syllabus' }),
       });
       const payload = await response.json() as { analysis?: CourseAnalysis; error?: string };
       if (!response.ok || !payload.analysis) throw new Error(payload.error || 'The syllabus could not be analyzed.');
       let completed = normalizeCourse(payload.analysis);
-      if (file?.original) {
-        const sourceFile = { name: file.name, mimeType: file.type || 'application/octet-stream', available: true };
-        try { await saveOriginalFile(completed.id, file.original); }
+      if (activeFile?.original) {
+        const sourceFile = { name: activeFile.name, mimeType: activeFile.type || 'application/octet-stream', available: true };
+        try { await saveOriginalFile(completed.id, activeFile.original); }
         catch { sourceFile.available = false; }
         completed = { ...completed, sourceFile };
       }
@@ -192,26 +237,79 @@ export default function Home() {
       setView('course');
       persist(completed);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Something went wrong.'); }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Something went wrong.';
+      setError(message);
+      if (options?.fromDrop) showDropNotice(message);
+    }
     finally { setAnalyzing(false); }
   }
 
-  function chooseFile(selected?: File) {
+  function chooseFile(selected?: File, autoAnalyze = false) {
     if (!selected) return;
     setError('');
-    if (atCourseLimit) return setError(`You have reached the ${MAX_COURSES}-syllabus limit. Delete one from your Semester dashboard to add another.`);
-    if (selected.size > 10 * 1024 * 1024) return setError('Keep the file under 10 MB.');
+    setDropNotice('');
+    const reject = (message: string) => { setError(message); if (autoAnalyze) showDropNotice(message); };
+    if (atCourseLimit) return reject(`You have reached the ${MAX_COURSES}-syllabus limit. Delete one from your Semester dashboard to add another.`);
+    if (analyzing) return reject('A syllabus is already being analyzed.');
+    if (selected.size > 10 * 1024 * 1024) return reject('Keep the file under 10 MB.');
     const extension = selected.name.split('.').pop()?.toLowerCase();
-    if (!['pdf', 'docx', 'txt', 'md'].includes(extension || '')) return setError('Use a PDF, DOCX, TXT, or Markdown file.');
+    if (!['pdf', 'docx', 'txt', 'md'].includes(extension || '')) return reject('Use a PDF, DOCX, TXT, or Markdown file.');
     const reader = new FileReader();
+    const finish = (prepared: SelectedSyllabusFile, text: string) => {
+      setMethod('upload');
+      setFile(prepared);
+      setSyllabus(text);
+      if (autoAnalyze) {
+        setAutoAnalyzingFile(prepared.name);
+        void analyze({ fileOverride: prepared, textOverride: text, fromDrop: true }).finally(() => setAutoAnalyzingFile(''));
+      }
+    };
+    reader.onerror = () => reject('That file could not be read. Try it again or choose another copy.');
     if (extension === 'pdf' || extension === 'docx') {
-      reader.onload = () => setFile({ name: selected.name, data: String(reader.result || ''), type: selected.type, original: selected });
+      reader.onload = () => finish({ name: selected.name, data: String(reader.result || ''), type: selected.type, original: selected }, '');
       reader.readAsDataURL(selected);
     } else {
-      reader.onload = () => { setSyllabus(String(reader.result || '')); setFile({ name: selected.name, data: '', type: selected.type, original: selected }); };
+      reader.onload = () => finish({ name: selected.name, data: '', type: selected.type, original: selected }, String(reader.result || ''));
       reader.readAsText(selected);
     }
   }
+
+  function isFileDrag(event: ReactDragEvent<HTMLElement>) {
+    return Array.from(event.dataTransfer.types).includes('Files');
+  }
+
+  function handleDragEnter(event: ReactDragEvent<HTMLElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setIsDraggingFile(true);
+  }
+
+  function handleDragOver(event: ReactDragEvent<HTMLElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = atCourseLimit || analyzing ? 'none' : 'copy';
+  }
+
+  function handleDragLeave(event: ReactDragEvent<HTMLElement>) {
+    if (dragDepth.current === 0) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDraggingFile(false);
+  }
+
+  function handleDrop(event: ReactDragEvent<HTMLElement>) {
+    if (!isFileDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepth.current = 0;
+    setIsDraggingFile(false);
+    chooseFile(event.dataTransfer.files[0], true);
+  }
+
+  const globalDropProps = { onDragEnter: handleDragEnter, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop };
+  const globalFileUi = <><FileDropOverlay visible={isDraggingFile} blocked={atCourseLimit} busy={analyzing} /><DropStatus fileName={autoAnalyzingFile} message={dropNotice} /></>;
 
   function newCourse() {
     setView('course'); setAnalysis(null); setSyllabus(''); setFile(null); setError('');
@@ -268,7 +366,8 @@ export default function Home() {
 
   if (view === 'semester' && courses.length) {
     return (
-      <main className="dashboard-shell">
+      <main className="dashboard-shell" {...globalDropProps}>
+        {globalFileUi}
         <header className="dashboard-topbar">
           <button className="brand brand-button" type="button" onClick={newCourse}><span className="brand-mark">C</span><span>CourseCue</span></button>
           <div className="dashboard-actions"><span className="semester-badge">Semester overview</span><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
@@ -292,7 +391,8 @@ export default function Home() {
   if (analysis) {
     const rmp = analysis.rateMyProfessor;
     return (
-      <main className="dashboard-shell">
+      <main className="dashboard-shell" {...globalDropProps}>
+        {globalFileUi}
         <header className="dashboard-topbar">
           <button className="brand brand-button" type="button" onClick={newCourse}><span className="brand-mark">C</span><span>CourseCue</span></button>
           <div className="dashboard-actions"><button className="semester-link" type="button" onClick={() => setView('semester')}>Semester</button><span className={`mode-badge ${analysis.analysisMode}`}>{analysis.analysisMode === 'ai' ? 'AI analyzed' : 'Local analysis'}</span><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
@@ -357,15 +457,16 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" {...globalDropProps}>
+      {globalFileUi}
       <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">C</span><span>CourseCue</span></a><div className="nav-actions"><a href="#features">What it finds</a><button type="button" onClick={() => courses.length && setView('semester')}>Semester {courses.length ? `(${courses.length})` : ''}</button><ThemeToggleButton theme={theme} onToggle={toggleTheme} /></div></nav>
       <section className="hero animate-in fade-in slide-in-from-bottom-2 duration-500" id="top"><div className="eyebrow"><span /> A syllabus workspace for students</div><h1>Read it once.<br />Know it all semester.</h1><p className="hero-copy">CourseCue turns the document you keep reopening into a clear, source-backed guide to every policy, deadline, grade, and expectation.</p>
         <div className="import-card">
           <div className="import-heading"><div><span className="document-index">{String(Math.min(courses.length + 1, MAX_COURSES)).padStart(2, '0')}</span><div><strong>New course analysis</strong><small>{courses.length} of {MAX_COURSES} syllabi saved in this browser.</small></div></div><span className="ai-ready">AI ready</span></div>
           <div className="import-tabs"><button className={method === 'upload' ? 'active' : ''} type="button" onClick={() => setMethod('upload')}>Drop a file</button><button className={method === 'paste' ? 'active' : ''} type="button" onClick={() => setMethod('paste')}>Paste text</button></div>
-          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Semester dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files[0]); }}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus here</strong><small>PDF, DOCX, TXT, or Markdown · up to 10 MB</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
+          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Semester dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus anywhere</strong><small>It analyzes automatically · PDF, DOCX, TXT, or Markdown · up to 10 MB</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
           <input ref={fileInput} className="sr-only" type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => chooseFile(event.target.files?.[0])} />
-          <div className="import-footer"><span><i /> Stored locally after analysis</span><div><button className="example-button" type="button" disabled={atCourseLimit} onClick={() => { setMethod('paste'); setSyllabus(sampleSyllabus); setFile(null); setError(''); }}>Use sample</button><button className="analyze-button" type="button" disabled={atCourseLimit || analyzing || (!syllabus.trim() && !file)} onClick={analyze}>{analyzing ? <><i className="spinner" />Reading every section…</> : <>Analyze syllabus <b>→</b></>}</button></div></div>
+          <div className="import-footer"><span><i /> Stored locally after analysis</span><div><button className="example-button" type="button" disabled={atCourseLimit} onClick={() => { setMethod('paste'); setSyllabus(sampleSyllabus); setFile(null); setError(''); }}>Use sample</button><button className="analyze-button" type="button" disabled={atCourseLimit || analyzing || (!syllabus.trim() && !file)} onClick={() => void analyze()}>{analyzing ? <><i className="spinner" />Reading every section…</> : <>Analyze syllabus <b>→</b></>}</button></div></div>
         </div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="trust-row"><span>Source-backed answers</span><span>Transparent scoring</span><span>No account required</span></div>

@@ -144,6 +144,24 @@ html.theme-shifting *, html.theme-shifting *::before, html.theme-shifting *::aft
 .file-drop strong { font-size: 11px; }
 .file-drop small { margin-top: 5px; color: var(--faint); font-size: 9px; }
 .file-drop:hover { border-color: #6f9a87; }
+.global-drop-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; opacity: 0; visibility: hidden; pointer-events: none; background: color-mix(in srgb,var(--bg) 78%,transparent); backdrop-filter: blur(8px); transition: opacity .2s ease, visibility .2s ease; }
+.global-drop-overlay.visible { opacity: 1; visibility: visible; }
+.global-drop-card { display: grid; place-items: center; width: min(560px,100%); min-height: 300px; padding: 44px 28px; border: 2px dashed color-mix(in srgb,var(--forest-2) 60%,var(--line)); border-radius: 20px; background: color-mix(in srgb,var(--surface) 94%,transparent); color: var(--ink); text-align: center; box-shadow: 0 28px 90px rgba(12,32,24,.18), inset 0 0 0 1px color-mix(in srgb,var(--surface-raised) 70%,transparent); transform: translateY(12px) scale(.97); transition: transform .3s cubic-bezier(.22,1,.36,1), border-color .2s ease, background-color .2s ease; }
+.global-drop-overlay.visible .global-drop-card { transform: translateY(0) scale(1); }
+.global-drop-card.blocked { border-color: var(--warning-line); background: color-mix(in srgb,var(--warning) 94%,transparent); }
+.global-drop-icon { display: grid; place-items: center; width: 62px; height: 62px; margin-bottom: 22px; border: 1px solid color-mix(in srgb,var(--forest-2) 34%,var(--line)); border-radius: 18px 18px 18px 6px; background: var(--forest); color: var(--accent); box-shadow: 0 12px 30px rgba(12,46,35,.18); }
+.global-drop-card.blocked .global-drop-icon { border-color: var(--warning-line); background: var(--surface-raised); color: var(--muted); box-shadow: none; }
+.global-drop-icon svg { width: 27px; height: 27px; stroke-width: 1.8; }
+.global-drop-card strong { font: 500 clamp(28px,5vw,40px)/1 Georgia,serif; letter-spacing: -.035em; }
+.global-drop-card p { margin: 12px 0 8px; color: var(--muted); font-size: 15px; }
+.global-drop-card small { color: var(--faint); font-size: 12px; }
+.drop-status { position: fixed; top: 22px; left: 50%; z-index: 1100; display: flex; align-items: center; gap: 10px; max-width: min(560px,calc(100% - 32px)); min-height: 46px; padding: 9px 15px; border: 1px solid var(--line-strong); border-radius: 999px; background: color-mix(in srgb,var(--surface-raised) 94%,transparent); color: var(--ink); box-shadow: 0 14px 44px rgba(12,32,24,.16); backdrop-filter: blur(12px); transform: translateX(-50%); animation: drop-status-in .28s cubic-bezier(.22,1,.36,1) both; }
+.drop-status strong { overflow: hidden; font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.drop-status .spinner { flex: 0 0 auto; margin: 0; border-color: color-mix(in srgb,var(--forest-2) 22%,transparent); border-top-color: var(--forest-2); }
+.drop-status.error { border-color: #d99887; background: color-mix(in srgb,#fff0ec 94%,var(--surface-raised)); color: #863d31; }
+:root[data-theme='dark'] .drop-status.error { border-color: #6f3c32; background: color-mix(in srgb,#2e1c18 94%,var(--surface-raised)); color: #e8a494; }
+.drop-status.error > span { display: grid; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb,currentColor 12%,transparent); font-size: 12px; font-weight: 850; }
+@keyframes drop-status-in { from { opacity: 0; transform: translate(-50%,-10px) scale(.97); } to { opacity: 1; transform: translate(-50%,0) scale(1); } }
 .upload-limit { display: grid; place-items: center; min-height: 208px; margin: 14px; padding: 28px; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--surface-soft); text-align: center; }
 .upload-limit > span { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font: 600 12px Georgia,serif; }
 .upload-limit strong { font: 500 20px Georgia,serif; }
