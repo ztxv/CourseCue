@@ -2,6 +2,10 @@
 
 # CourseCue
 
+<img width="2129" height="1227" alt="image" src="https://github.com/user-attachments/assets/d32ec534-211b-43b0-9380-56f808bc265a" />
+
+
+
 ### Read it once. Know it all semester.
 
 CourseCue turns a syllabus into a clear, source-backed workspace for policies, grades, deadlines, workload, and instructor information.
