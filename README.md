@@ -1,5 +1,9 @@
 <div align="center">
 
+[![Version](https://img.shields.io/badge/version-v0.9.7-15392e?style=flat-square)](https://github.com/ztxv/CourseCue)
+![Node](https://img.shields.io/badge/Node.js-22.13%2B-43853d?style=flat-square)
+![Local first](https://img.shields.io/badge/storage-local--first-59c7f5?style=flat-square)
+
 # CourseCue
 
 <img width="1505" height="1187" alt="image" src="https://github.com/user-attachments/assets/1f3d781a-62dc-4e36-90ea-57998ee9833f" />
@@ -9,10 +13,6 @@
 ### Read it once. Know it all semester.
 
 CourseCue turns a syllabus into a clear, source-backed workspace for policies, grades, deadlines, workload, and instructor information.
-
-[![Version](https://img.shields.io/badge/version-v0.9.7-15392e?style=flat-square)](https://github.com/ztxv/CourseCue)
-![Node](https://img.shields.io/badge/Node.js-22.13%2B-43853d?style=flat-square)
-![Local first](https://img.shields.io/badge/storage-local--first-59c7f5?style=flat-square)
 
 </div>
 
