@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type CSSProperties, type DragEvent as Reac
 import { FileUp } from 'lucide-react';
 import { RemoveCourseButton } from '@/components/remove-course-button';
 import { SemesterDashboard } from '@/components/semester-dashboard';
+import { SettingsDialog } from '@/components/settings-dialog';
 import { ThemeToggleButton, type Theme } from '@/components/theme-toggle-button';
+import { AI_SETTINGS_KEY, EMPTY_AI_SETTINGS, detectProvider, type AiSettings } from '@/lib/ai-provider';
 import type { CalendarConnection, CalendarEvent } from '@/lib/calendar-types';
 import { deleteOriginalFile, getOriginalFile, saveOriginalFile } from '@/lib/file-store';
 import { sampleSyllabus } from '../lib/sample';
@@ -14,7 +16,7 @@ const STORAGE_KEY = 'coursecue-courses-v2';
 const THEME_KEY = 'coursecue-theme';
 const CALENDAR_EVENTS_KEY = 'coursecue-calendar-events-v1';
 const CALENDAR_CONNECTION_KEY = 'coursecue-calendar-connection-v1';
-const MAX_COURSES = 5;
+const MAX_COURSES = 6;
 type AppView = 'course' | 'semester';
 type SelectedSyllabusFile = { name: string; data: string; type: string; original: File };
 type AnalyzeOptions = { fileOverride?: SelectedSyllabusFile; textOverride?: string; fromDrop?: boolean };
@@ -68,10 +70,6 @@ function PolicyCard({ label, mark, policy, tone, showEvidence }: { label: string
   );
 }
 
-function MakerCredit() {
-  return <footer className="maker-credit">made by <a href="https://github.com/ztxv" target="_blank" rel="noreferrer">ztxv</a></footer>;
-}
-
 function FileDropOverlay({ visible, blocked, busy }: { visible: boolean; blocked: boolean; busy: boolean }) {
   const heading = blocked ? 'Your semester is full' : busy ? 'Analysis in progress' : 'Drop to analyze';
   const copy = blocked ? 'Delete a saved syllabus before adding another.' : busy ? 'Let the current syllabus finish first.' : 'Release your syllabus anywhere. Analysis starts instantly.';
@@ -94,6 +92,7 @@ function DropStatus({ fileName, message }: { fileName: string; message: string }
 
 export default function Home() {
   const [theme, setTheme] = useState<Theme>('light');
+  const [aiSettings, setAiSettings] = useState<AiSettings>(EMPTY_AI_SETTINGS);
   const [method, setMethod] = useState<'paste' | 'upload'>('upload');
   const [syllabus, setSyllabus] = useState('');
   const [file, setFile] = useState<SelectedSyllabusFile | null>(null);
@@ -122,6 +121,7 @@ export default function Home() {
     let storedCourses: CourseAnalysis[] = [];
     let storedEvents: CalendarEvent[] = [];
     let storedConnection: CalendarConnection | null = null;
+    let storedAiSettings = EMPTY_AI_SETTINGS;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) storedCourses = (JSON.parse(stored) as CourseAnalysis[]).map(normalizeCourse);
@@ -135,11 +135,24 @@ export default function Home() {
       localStorage.removeItem(CALENDAR_EVENTS_KEY);
       localStorage.removeItem(CALENDAR_CONNECTION_KEY);
     }
+    try {
+      const savedAiSettings = localStorage.getItem(AI_SETTINGS_KEY);
+      if (savedAiSettings) {
+        const parsed = JSON.parse(savedAiSettings) as Partial<AiSettings>;
+        const apiKey = typeof parsed.apiKey === 'string' ? parsed.apiKey : '';
+        storedAiSettings = {
+          apiKey,
+          provider: detectProvider(apiKey),
+          model: typeof parsed.model === 'string' ? parsed.model : '',
+        };
+      }
+    } catch { localStorage.removeItem(AI_SETTINGS_KEY); }
     const frame = window.requestAnimationFrame(() => {
       setTheme(nextTheme);
       setCourses(storedCourses);
       setCalendarEvents(storedEvents);
       setCalendarConnection(storedConnection);
+      setAiSettings(storedAiSettings);
     });
     return () => {
       window.cancelAnimationFrame(frame);
@@ -161,6 +174,12 @@ export default function Home() {
     if (viewDocument.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) viewDocument.startViewTransition(apply);
     else apply();
     window.setTimeout(() => document.documentElement.classList.remove('theme-shifting'), 700);
+  }
+
+  function saveAiSettings(next: AiSettings) {
+    setAiSettings(next);
+    if (next.apiKey) localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(next));
+    else localStorage.removeItem(AI_SETTINGS_KEY);
   }
 
   function persist(course: CourseAnalysis) {
@@ -212,7 +231,7 @@ export default function Home() {
       return;
     }
     if (atCourseLimit) {
-      const message = `You can save up to ${MAX_COURSES} syllabi. Delete one from your Semester dashboard before adding another.`;
+      const message = `You can save up to ${MAX_COURSES} syllabi. Delete one from your Syllabi dashboard before adding another.`;
       setError(message);
       if (options?.fromDrop) showDropNotice(message);
       return;
@@ -222,7 +241,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: activeText, fileData: activeFile?.data || '', fileName: activeFile?.name || 'Pasted syllabus' }),
+        body: JSON.stringify({ text: activeText, fileData: activeFile?.data || '', fileName: activeFile?.name || 'Pasted syllabus', ai: aiSettings.apiKey ? aiSettings : undefined }),
       });
       const payload = await response.json() as { analysis?: CourseAnalysis; error?: string };
       if (!response.ok || !payload.analysis) throw new Error(payload.error || 'The syllabus could not be analyzed.');
@@ -250,7 +269,7 @@ export default function Home() {
     setError('');
     setDropNotice('');
     const reject = (message: string) => { setError(message); if (autoAnalyze) showDropNotice(message); };
-    if (atCourseLimit) return reject(`You have reached the ${MAX_COURSES}-syllabus limit. Delete one from your Semester dashboard to add another.`);
+    if (atCourseLimit) return reject(`You have reached the ${MAX_COURSES}-syllabus limit. Delete one from your Syllabi dashboard to add another.`);
     if (analyzing) return reject('A syllabus is already being analyzed.');
     if (selected.size > 10 * 1024 * 1024) return reject('Keep the file under 10 MB.');
     const extension = selected.name.split('.').pop()?.toLowerCase();
@@ -370,12 +389,12 @@ export default function Home() {
         {globalFileUi}
         <header className="dashboard-topbar">
           <button className="brand brand-button" type="button" onClick={newCourse}><span className="brand-mark">C</span><span>CourseCue</span></button>
-          <div className="dashboard-actions"><span className="semester-badge">Semester overview</span><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
+          <div className="dashboard-actions"><span className="semester-badge">Syllabi overview</span><SettingsDialog settings={aiSettings} onSave={saveAiSettings} /><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
         </header>
         <div className="dashboard-layout">
           <aside className="course-sidebar">
             <p className="sidebar-label">WORKSPACE</p>
-            <button className="semester-nav active" type="button"><span>⌂</span><strong>Semester overview</strong></button>
+            <button className="semester-nav active" type="button"><span>⌂</span><strong>Syllabi overview</strong></button>
             <p className="sidebar-label course-label">MY COURSES</p>
             <div className="course-list">{courses.map((course, index) => <div className="course-list-entry" key={course.id}><button type="button" className="course-list-item" onClick={() => selectCourse(course)}><span className={`course-color color-${index % 4}`}>{(course.course.code || 'CC').slice(0, 2)}</span><span><strong>{course.course.code}</strong><small>{course.course.title}</small></span></button><RemoveCourseButton course={course} onRemove={removeCourse} compact /></div>)}</div>
             <button className="add-course-link" type="button" onClick={newCourse} disabled={atCourseLimit}>{atCourseLimit ? `${MAX_COURSES} / ${MAX_COURSES} syllabi` : '＋ Analyze another'}</button>
@@ -383,7 +402,6 @@ export default function Home() {
           </aside>
           <SemesterDashboard courses={courses} courseLimit={MAX_COURSES} canvasEvents={calendarEvents} connection={calendarConnection} onSelectCourse={selectCourse} onNewCourse={newCourse} onUpdateCourse={updateCourse} onRemoveCourse={removeCourse} onSyncCalendar={syncCalendar} onImportCalendar={storeCalendarImport} />
         </div>
-        <MakerCredit />
       </main>
     );
   }
@@ -395,13 +413,13 @@ export default function Home() {
         {globalFileUi}
         <header className="dashboard-topbar">
           <button className="brand brand-button" type="button" onClick={newCourse}><span className="brand-mark">C</span><span>CourseCue</span></button>
-          <div className="dashboard-actions"><button className="semester-link" type="button" onClick={() => setView('semester')}>Semester</button><span className={`mode-badge ${analysis.analysisMode}`}>{analysis.analysisMode === 'ai' ? 'AI analyzed' : 'Local analysis'}</span><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
+          <div className="dashboard-actions"><button className="semester-link" type="button" onClick={() => setView('semester')}>Syllabi</button><span className={`mode-badge ${analysis.analysisMode}`}>{analysis.analysisMode === 'ai' ? 'AI analyzed' : 'Local analysis'}</span><SettingsDialog settings={aiSettings} onSave={saveAiSettings} /><ThemeToggleButton theme={theme} onToggle={toggleTheme} /><button className="secondary-button" type="button" onClick={newCourse} disabled={atCourseLimit} title={atCourseLimit ? `Delete a course to add another (${MAX_COURSES}/${MAX_COURSES})` : undefined}>＋ Add syllabus</button></div>
         </header>
 
         <div className="dashboard-layout">
           <aside className="course-sidebar">
             <p className="sidebar-label">WORKSPACE</p>
-            <button className="semester-nav" type="button" onClick={() => setView('semester')}><span>⌂</span><strong>Semester overview</strong></button>
+            <button className="semester-nav" type="button" onClick={() => setView('semester')}><span>⌂</span><strong>Syllabi overview</strong></button>
             <p className="sidebar-label course-label">MY COURSES</p>
             <div className="course-list">{courses.map((course, index) => <div className={`course-list-entry ${course.id === analysis.id ? 'active' : ''}`} key={course.id}><button type="button" className="course-list-item" onClick={() => selectCourse(course)}><span className={`course-color color-${index % 4}`}>{(course.course.code || 'CC').slice(0, 2)}</span><span><strong>{course.course.code}</strong><small>{course.course.title}</small></span></button><RemoveCourseButton course={course} onRemove={removeCourse} compact /></div>)}</div>
             <button className="add-course-link" type="button" onClick={newCourse} disabled={atCourseLimit}>{atCourseLimit ? `${MAX_COURSES} / ${MAX_COURSES} syllabi` : '＋ Analyze another'}</button>
@@ -449,8 +467,6 @@ export default function Home() {
           </section>
         </div>
 
-        <MakerCredit />
-
         {evidence && <div className="modal-backdrop animate-in fade-in duration-200" onMouseDown={(event) => event.currentTarget === event.target && setEvidence(null)}><section className="evidence-modal animate-in fade-in zoom-in-95 duration-200" role="dialog" aria-modal="true" aria-labelledby="evidence-heading"><div className="modal-heading"><div><p className="overline">SOURCE EVIDENCE</p><h2 id="evidence-heading">{evidence.context}</h2></div><button type="button" onClick={() => setEvidence(null)} aria-label="Close">×</button></div><blockquote>{evidence.quote || 'Original text is not available for this file-based analysis.'}</blockquote><p>Verify important decisions against your original syllabus.</p></section></div>}
       </main>
     );
@@ -459,12 +475,12 @@ export default function Home() {
   return (
     <main className="app-shell" {...globalDropProps}>
       {globalFileUi}
-      <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">C</span><span>CourseCue</span></a><div className="nav-actions"><a href="#features">What it finds</a><button type="button" onClick={() => courses.length && setView('semester')}>Semester {courses.length ? `(${courses.length})` : ''}</button><ThemeToggleButton theme={theme} onToggle={toggleTheme} /></div></nav>
+      <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">C</span><span>CourseCue</span></a><div className="nav-actions"><a href="#features">What it finds</a><button type="button" onClick={() => courses.length && setView('semester')}>Syllabi {courses.length ? `(${courses.length})` : ''}</button><SettingsDialog settings={aiSettings} onSave={saveAiSettings} /><ThemeToggleButton theme={theme} onToggle={toggleTheme} /></div></nav>
       <section className="hero animate-in fade-in slide-in-from-bottom-2 duration-500" id="top"><div className="eyebrow"><span /> A syllabus workspace for students</div><h1>Read it once.<br />Know it all semester.</h1><p className="hero-copy">CourseCue turns the document you keep reopening into a clear, source-backed guide to every policy, deadline, grade, and expectation.</p>
         <div className="import-card">
           <div className="import-heading"><div><span className="document-index">{String(Math.min(courses.length + 1, MAX_COURSES)).padStart(2, '0')}</span><div><strong>New course analysis</strong><small>{courses.length} of {MAX_COURSES} syllabi saved in this browser.</small></div></div><span className="ai-ready">AI ready</span></div>
           <div className="import-tabs"><button className={method === 'upload' ? 'active' : ''} type="button" onClick={() => setMethod('upload')}>Drop a file</button><button className={method === 'paste' ? 'active' : ''} type="button" onClick={() => setMethod('paste')}>Paste text</button></div>
-          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Semester dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus anywhere</strong><small>It analyzes automatically · PDF, DOCX, TXT, or Markdown · up to 10 MB</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
+          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Syllabi dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus anywhere</strong><small>It analyzes automatically · PDF, DOCX, TXT, or Markdown · up to 10 MB</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
           <input ref={fileInput} className="sr-only" type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => chooseFile(event.target.files?.[0])} />
           <div className="import-footer"><span><i /> Stored locally after analysis</span><div><button className="example-button" type="button" disabled={atCourseLimit} onClick={() => { setMethod('paste'); setSyllabus(sampleSyllabus); setFile(null); setError(''); }}>Use sample</button><button className="analyze-button" type="button" disabled={atCourseLimit || analyzing || (!syllabus.trim() && !file)} onClick={() => void analyze()}>{analyzing ? <><i className="spinner" />Reading every section…</> : <>Analyze syllabus <b>→</b></>}</button></div></div>
         </div>
@@ -473,7 +489,6 @@ export default function Home() {
       </section>
 
       <section className="preview-section" id="features"><div className="preview-heading"><div><p className="overline">THE SECOND LOOKUP, SOLVED</p><h2>Everything you need.<br />Nothing you have to hunt for.</h2></div><span>Example course</span></div><div className="preview-grid"><article className="preview-course"><div><span>CS 312</span><small>Fall 2026</small></div><h3>Data Structures<br />&amp; Algorithms</h3><p>Dr. Maya Chen · Northwood University</p><footer><div><span>SYLLABUS PRESSURE</span><strong>Intense</strong></div><b>7.8<small>/10</small></b></footer></article><article className="preview-policy sand"><span className="preview-mark">↘</span><p className="overline">LATE WORK</p><h3>48-hour window</h3><p>Accepted with a 15% deduction per day. Nothing after 48 hours without approval.</p><small>Exact source attached</small></article><article className="preview-policy mint"><span className="preview-mark">◎</span><p className="overline">ATTENDANCE</p><h3>Effectively mandatory</h3><p>Three unexcused absences lowers the final grade by one letter.</p><small>Exact source attached</small></article></div><div className="feature-index">{['Instructor contact', 'Grading weights', 'Key dates', 'Weekly workload', 'Required materials', 'Unknowns to confirm'].map((feature, index) => <span key={feature}><b>0{index + 1}</b>{feature}</span>)}</div></section>
-      <MakerCredit />
     </main>
   );
 }

@@ -180,13 +180,13 @@ export function SemesterDashboard({ courses, courseLimit, canvasEvents, connecti
   return (
     <section className="semester-main animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="semester-heading">
-        <div><p className="overline">SEMESTER HOME</p><h1>{data.term}</h1><p>Your course load, critical dates, and pressure points in one place.</p></div>
+        <div><p className="overline">SYLLABI OVERVIEW</p><h1>{data.term}</h1><p>Your course load, critical dates, and pressure points in one place.</p></div>
         <button className="secondary-button" type="button" onClick={onNewCourse} disabled={courses.length >= courseLimit}>＋ Add course</button>
       </div>
 
       {courses.length >= courseLimit && <div className="course-limit-banner" role="status"><span>{courses.length}/{courseLimit}</span><p><strong>Syllabus limit reached.</strong> Delete one below before adding another.</p></div>}
 
-      <section className="semester-stats" aria-label="Semester summary">
+      <section className="semester-stats" aria-label="Syllabi summary">
         <article><span className="semester-stat-icon"><BookOpen /></span><p>Courses</p><strong>{courses.length}</strong><small>{courses.length === 1 ? 'syllabus analyzed' : 'syllabi analyzed'}</small></article>
         <article><span className="semester-stat-icon"><span>Cr</span></span><p>Total credits</p><strong>{data.creditsKnown ? data.credits : '—'}</strong><small>{data.creditsKnown === courses.length ? 'all courses counted' : `${data.creditsKnown}/${courses.length} courses known`}</small></article>
         <article><span className="semester-stat-icon"><Clock3 /></span><p>Weekly work</p><strong>{data.workloadKnown ? `${data.weeklyHours}h` : '—'}</strong><small>{data.workloadKnown === courses.length ? 'stated maximum' : `${data.workloadKnown}/${courses.length} estimates found`}</small></article>
