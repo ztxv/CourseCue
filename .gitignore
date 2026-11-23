@@ -10,3 +10,5 @@ dist/
 npm-debug.log*
 *.tsbuildinfo
 .env.local
+out/
+.vercel/

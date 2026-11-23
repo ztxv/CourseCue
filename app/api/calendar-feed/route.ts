@@ -33,6 +33,9 @@ async function requestFeed(feedUrl: URL, signal: AbortSignal) {
 }
 
 export async function POST(request: Request) {
+  // Defense in depth: the demo build is statically exported without API routes, but
+  // if a demo-flagged build is ever served with a server, refuse to relay outbound feed requests.
+  if (process.env.NEXT_PUBLIC_COURSECUE_DEMO === 'true') return Response.json({ error: 'Live Canvas feed sync is disabled in the public demo. Run CourseCue locally to use it.' }, { status: 403 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {

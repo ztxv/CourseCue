@@ -7,7 +7,9 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "dev:demo": "node scripts/demo-next.mjs dev",
     "build": "vinext build",
+    "build:demo": "node scripts/demo-next.mjs build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },

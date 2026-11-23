@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from 'react';
 import { FileUp } from 'lucide-react';
 import { RemoveCourseButton } from '@/components/remove-course-button';
+import { DemoBanner } from '@/components/demo-banner';
 import { SemesterDashboard } from '@/components/semester-dashboard';
 import { SettingsDialog } from '@/components/settings-dialog';
 import { ThemeToggleButton, type Theme } from '@/components/theme-toggle-button';
 import { AI_SETTINGS_KEY, EMPTY_AI_SETTINGS, detectProvider, type AiSettings } from '@/lib/ai-provider';
 import type { CalendarConnection, CalendarEvent } from '@/lib/calendar-types';
+import { DEMO_CALENDAR_MESSAGE, DEMO_FILE_TYPE_MESSAGE, DEMO_SAMPLE_NAME, IS_DEMO } from '@/lib/demo';
 import { deleteOriginalFile, getOriginalFile, saveOriginalFile } from '@/lib/file-store';
+import { analyzeLocally } from '../lib/local-analyzer';
 import { sampleSyllabus } from '../lib/sample';
 import type { CourseAnalysis, Evidence, Policy } from '../lib/types';
 
@@ -27,6 +30,11 @@ function normalizeCourse(course: CourseAnalysis): CourseAnalysis {
     course: { ...course.course, credits: course.course.credits ?? null, startDate: course.course.startDate || '', endDate: course.course.endDate || '' },
     dates: (course.dates || []).map((item) => ({ ...item, endDate: item.endDate || '' })),
   };
+}
+
+// Demo only: the bundled sample, analyzed in the browser by the local analyzer.
+function demoSampleCourse() {
+  return normalizeCourse(analyzeLocally(sampleSyllabus, DEMO_SAMPLE_NAME));
 }
 
 function formatDate(value: string) {
@@ -79,7 +87,7 @@ function FileDropOverlay({ visible, blocked, busy }: { visible: boolean; blocked
         <span className="global-drop-icon"><FileUp aria-hidden="true" /></span>
         <strong>{heading}</strong>
         <p>{copy}</p>
-        {!blocked && !busy && <small>PDF, DOCX, TXT, or Markdown · up to 10 MB</small>}
+        {!blocked && !busy && <small>{IS_DEMO ? 'TXT or Markdown in the demo · up to 10 MB' : 'PDF, DOCX, TXT, or Markdown · up to 10 MB'}</small>}
       </div>
     </div>
   );
@@ -135,7 +143,12 @@ export default function Home() {
       localStorage.removeItem(CALENDAR_EVENTS_KEY);
       localStorage.removeItem(CALENDAR_CONNECTION_KEY);
     }
-    try {
+    if (IS_DEMO && !storedCourses.length) {
+      storedCourses = [demoSampleCourse()];
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(storedCourses)); } catch { /* The sample still renders. */ }
+    }
+    // The demo never loads a stored API key.
+    if (!IS_DEMO) try {
       const savedAiSettings = localStorage.getItem(AI_SETTINGS_KEY);
       if (savedAiSettings) {
         const parsed = JSON.parse(savedAiSettings) as Partial<AiSettings>;
@@ -153,6 +166,7 @@ export default function Home() {
       setCalendarEvents(storedEvents);
       setCalendarConnection(storedConnection);
       setAiSettings(storedAiSettings);
+      if (IS_DEMO && storedCourses[0]) setAnalysis(storedCourses[0]);
     });
     return () => {
       window.cancelAnimationFrame(frame);
@@ -210,6 +224,7 @@ export default function Home() {
   }
 
   async function syncCalendar(url: string) {
+    if (IS_DEMO) throw new Error(DEMO_CALENDAR_MESSAGE);
     const response = await fetch('/api/calendar-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
     const payload = await response.json() as { calendarName?: string; events?: CalendarEvent[]; error?: string };
     if (!response.ok || !payload.events) throw new Error(payload.error || 'Calendar sync failed.');
@@ -239,13 +254,21 @@ export default function Home() {
     setAnalyzing(true);
     setError('');
     try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: activeText, fileData: activeFile?.data || '', fileName: activeFile?.name || 'Pasted syllabus', ai: aiSettings.apiKey ? aiSettings : undefined }),
-      });
-      const payload = await response.json() as { analysis?: CourseAnalysis; error?: string };
-      if (!response.ok || !payload.analysis) throw new Error(payload.error || 'The syllabus could not be analyzed.');
-      let completed = normalizeCourse(payload.analysis);
+      let result: CourseAnalysis;
+      if (IS_DEMO) {
+        // Demo: analyze in the browser only. Nothing is sent to /api/analyze or an AI provider.
+        if (!activeText) throw new Error(DEMO_FILE_TYPE_MESSAGE);
+        result = analyzeLocally(activeText, activeFile?.name || 'Pasted syllabus');
+      } else {
+        const response = await fetch('/api/analyze', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: activeText, fileData: activeFile?.data || '', fileName: activeFile?.name || 'Pasted syllabus', ai: aiSettings.apiKey ? aiSettings : undefined }),
+        });
+        const payload = await response.json() as { analysis?: CourseAnalysis; error?: string };
+        if (!response.ok || !payload.analysis) throw new Error(payload.error || 'The syllabus could not be analyzed.');
+        result = payload.analysis;
+      }
+      let completed = normalizeCourse(result);
       if (activeFile?.original) {
         const sourceFile = { name: activeFile.name, mimeType: activeFile.type || 'application/octet-stream', available: true };
         try { await saveOriginalFile(completed.id, activeFile.original); }
@@ -274,6 +297,7 @@ export default function Home() {
     if (selected.size > 10 * 1024 * 1024) return reject('Keep the file under 10 MB.');
     const extension = selected.name.split('.').pop()?.toLowerCase();
     if (!['pdf', 'docx', 'txt', 'md'].includes(extension || '')) return reject('Use a PDF, DOCX, TXT, or Markdown file.');
+    if (IS_DEMO && (extension === 'pdf' || extension === 'docx')) return reject(DEMO_FILE_TYPE_MESSAGE);
     const reader = new FileReader();
     const finish = (prepared: SelectedSyllabusFile, text: string) => {
       setMethod('upload');
@@ -328,7 +352,20 @@ export default function Home() {
   }
 
   const globalDropProps = { onDragEnter: handleDragEnter, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop };
-  const globalFileUi = <><FileDropOverlay visible={isDraggingFile} blocked={atCourseLimit} busy={analyzing} /><DropStatus fileName={autoAnalyzingFile} message={dropNotice} /></>;
+  async function resetDemo() {
+    for (const key of [STORAGE_KEY, CALENDAR_EVENTS_KEY, CALENDAR_CONNECTION_KEY, AI_SETTINGS_KEY]) {
+      try { localStorage.removeItem(key); } catch { /* Storage may be unavailable. */ }
+    }
+    await Promise.all(courses.map((course) => deleteOriginalFile(course.id).catch(() => undefined)));
+    const sample = demoSampleCourse();
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([sample])); } catch { /* The sample still renders. */ }
+    setCourses([sample]); setAnalysis(sample); setView('course');
+    setCalendarEvents([]); setCalendarConnection(null);
+    setSyllabus(''); setFile(null); setError(''); setEvidence(null); setDropNotice('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const globalFileUi = <>{IS_DEMO && <DemoBanner onReset={() => void resetDemo()} />}<FileDropOverlay visible={isDraggingFile} blocked={atCourseLimit} busy={analyzing} /><DropStatus fileName={autoAnalyzingFile} message={dropNotice} /></>;
 
   function newCourse() {
     setView('course'); setAnalysis(null); setSyllabus(''); setFile(null); setError('');
@@ -478,9 +515,9 @@ export default function Home() {
       <nav className="topbar"><a className="brand" href="#top"><span className="brand-mark">C</span><span>CourseCue</span></a><div className="nav-actions"><a href="#features">What it finds</a><button type="button" onClick={() => courses.length && setView('semester')}>Syllabi {courses.length ? `(${courses.length})` : ''}</button><SettingsDialog settings={aiSettings} onSave={saveAiSettings} /><ThemeToggleButton theme={theme} onToggle={toggleTheme} /></div></nav>
       <section className="hero animate-in fade-in slide-in-from-bottom-2 duration-500" id="top"><div className="eyebrow"><span /> A syllabus workspace for students</div><h1>Read it once.<br />Know it all semester.</h1><p className="hero-copy">CourseCue turns the document you keep reopening into a clear, source-backed guide to every policy, deadline, grade, and expectation.</p>
         <div className="import-card">
-          <div className="import-heading"><div><span className="document-index">{String(Math.min(courses.length + 1, MAX_COURSES)).padStart(2, '0')}</span><div><strong>New course analysis</strong><small>{courses.length} of {MAX_COURSES} syllabi saved in this browser.</small></div></div><span className="ai-ready">AI ready</span></div>
+          <div className="import-heading"><div><span className="document-index">{String(Math.min(courses.length + 1, MAX_COURSES)).padStart(2, '0')}</span><div><strong>New course analysis</strong><small>{courses.length} of {MAX_COURSES} syllabi saved in this browser.</small></div></div><span className="ai-ready">{IS_DEMO ? 'Local analyzer' : 'AI ready'}</span></div>
           <div className="import-tabs"><button className={method === 'upload' ? 'active' : ''} type="button" onClick={() => setMethod('upload')}>Drop a file</button><button className={method === 'paste' ? 'active' : ''} type="button" onClick={() => setMethod('paste')}>Paste text</button></div>
-          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Syllabi dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus anywhere</strong><small>It analyzes automatically · PDF, DOCX, TXT, or Markdown · up to 10 MB</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
+          {atCourseLimit ? <div className="upload-limit"><span>{MAX_COURSES}/{MAX_COURSES}</span><strong>Your semester is full.</strong><p>Delete a syllabus from the Syllabi dashboard before adding another.</p><button type="button" onClick={() => setView('semester')}>Manage syllabi</button></div> : method === 'upload' ? <button className="file-drop" type="button" onClick={() => fileInput.current?.click()}><span>↑</span>{file ? <><strong>{file.name}</strong><small>Ready to analyze · click to replace</small></> : <><strong>Drop your syllabus anywhere</strong><small>{IS_DEMO ? 'It analyzes automatically in your browser · TXT or Markdown in the demo' : 'It analyzes automatically · PDF, DOCX, TXT, or Markdown · up to 10 MB'}</small></>}</button> : <><label className="sr-only" htmlFor="syllabus-text">Syllabus text</label><textarea id="syllabus-text" value={syllabus} onChange={(event) => setSyllabus(event.target.value)} placeholder="Paste the full syllabus here…" /></>}
           <input ref={fileInput} className="sr-only" type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => chooseFile(event.target.files?.[0])} />
           <div className="import-footer"><span><i /> Stored locally after analysis</span><div><button className="example-button" type="button" disabled={atCourseLimit} onClick={() => { setMethod('paste'); setSyllabus(sampleSyllabus); setFile(null); setError(''); }}>Use sample</button><button className="analyze-button" type="button" disabled={atCourseLimit || analyzing || (!syllabus.trim() && !file)} onClick={() => void analyze()}>{analyzing ? <><i className="spinner" />Reading every section…</> : <>Analyze syllabus <b>→</b></>}</button></div></div>
         </div>
