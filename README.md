@@ -3,6 +3,8 @@
 [![Version](https://img.shields.io/badge/version-v0.9.7-15392e?style=flat-square)](https://github.com/ztxv/CourseCue)
 ![Node](https://img.shields.io/badge/Node.js-22.13%2B-43853d?style=flat-square)
 ![Local first](https://img.shields.io/badge/storage-local--first-59c7f5?style=flat-square)
+[![Live demo](https://img.shields.io/badge/live%20demo-try%20it-d5ee69?style=flat-square)](https://YOUR-COURSECUE-DEMO.vercel.app)
+<!-- TODO: replace https://YOUR-COURSECUE-DEMO.vercel.app (badge and link below) with the deployed Vercel URL. -->
 
 # CourseCue
 
@@ -13,6 +15,8 @@
 ### Read it once. Know it all semester.
 
 CourseCue turns a syllabus into a clear, source-backed workspace for policies, grades, deadlines, workload, and instructor information.
+
+**[Try the live demo →](https://YOUR-COURSECUE-DEMO.vercel.app)** · runs in your browser with a sample syllabus, no setup or API key
 
 </div>
 

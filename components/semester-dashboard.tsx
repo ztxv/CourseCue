@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'rea
 import { AlertTriangle, ArrowRight, BookOpen, CalendarDays, Check, Clock3, FileUp, Link2, Pencil, RefreshCw, X } from 'lucide-react';
 import { RemoveCourseButton } from '@/components/remove-course-button';
 import type { CalendarConnection, CalendarEvent } from '@/lib/calendar-types';
+import { DEMO_CALENDAR_MESSAGE, IS_DEMO } from '@/lib/demo';
 import { parseFeed } from '@/lib/ics';
 import type { CourseAnalysis } from '@/lib/types';
 
@@ -225,12 +226,12 @@ export function SemesterDashboard({ courses, courseLimit, canvasEvents, connecti
         <article className="semester-panel calendar-connect-panel">
           <div className="semester-panel-heading"><div><p className="overline">CANVAS CALENDAR</p><h2>Keep changed dates in sync.</h2></div><Link2 aria-hidden="true" /></div>
           <p className="calendar-explainer">Paste your Canvas iCal feed to pull assignments, quizzes, exams, and course events into this dashboard.</p>
-          <form className="calendar-feed-form" onSubmit={sync}>
+          {IS_DEMO ? <div className="feed-privacy" role="note"><span>⌁</span><p><strong>Live feed sync is off in the public demo.</strong>{DEMO_CALENDAR_MESSAGE}</p></div> : <><form className="calendar-feed-form" onSubmit={sync}>
             <label htmlFor="calendar-feed">Canvas iCal feed URL</label>
             <div><input id="calendar-feed" type="password" inputMode="url" autoComplete="off" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://…/feeds/calendars/…ics" /><button type="submit" disabled={syncing || !feedUrl.trim()}>{syncing ? <><RefreshCw className="sync-icon" /> Syncing</> : connection ? 'Sync again' : 'Connect feed'}</button></div>
           </form>
-          <div className="feed-privacy"><span>⌁</span><p><strong>Treat this link like a password.</strong>CourseCue uses it for the sync request but does not save the URL.</p></div>
-          <div className="calendar-fallback"><span><FileUp aria-hidden="true" /><span><strong>Canvas blocked the link?</strong><small>Download the feed as an .ics file and import it locally.</small></span></span><button type="button" onClick={() => calendarFileInput.current?.click()}>Import .ics</button><input ref={calendarFileInput} className="sr-only" type="file" accept=".ics,text/calendar" onChange={importCalendarFile} /></div>
+          <div className="feed-privacy"><span>⌁</span><p><strong>Treat this link like a password.</strong>CourseCue uses it for the sync request but does not save the URL.</p></div></>}
+          <div className="calendar-fallback"><span><FileUp aria-hidden="true" /><span><strong>{IS_DEMO ? 'Have a calendar file?' : 'Canvas blocked the link?'}</strong><small>Download the feed as an .ics file and import it locally.</small></span></span><button type="button" onClick={() => calendarFileInput.current?.click()}>Import .ics</button><input ref={calendarFileInput} className="sr-only" type="file" accept=".ics,text/calendar" onChange={importCalendarFile} /></div>
           {connection && <p className="connection-status"><i /> {connection.calendarName} · last synced {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(connection.lastSynced))}</p>}
           {syncMessage && <p className="sync-message" role="status">{syncMessage}</p>}
         </article>

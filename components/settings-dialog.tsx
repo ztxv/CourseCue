@@ -5,6 +5,7 @@ import { Dialog } from '@base-ui/react/dialog';
 import { Check, Eye, EyeOff, GitFork, Settings, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { defaultModel, detectProvider, PROVIDER_MODELS, type AiProvider, type AiSettings } from '@/lib/ai-provider';
+import { DEMO_QUICKSTART_URL, IS_DEMO } from '@/lib/demo';
 
 const PROVIDER_DETAILS: Record<AiProvider, { name: string; note: string }> = {
   openai: { name: 'OpenAI', note: 'Best match for CourseCue’s current PDF and DOCX pipeline.' },
@@ -66,10 +67,18 @@ export function SettingsDialog({ settings, onSave }: { settings: AiSettings; onS
         <Dialog.Backdrop className="settings-backdrop" />
         <Dialog.Popup className="settings-dialog">
           <div className="settings-heading">
-            <div><p className="overline">COURSECUE SETTINGS</p><Dialog.Title>Bring your own AI.</Dialog.Title><Dialog.Description>Your key stays saved in this browser and is sent only when you analyze a syllabus.</Dialog.Description></div>
+            <div><p className="overline">COURSECUE SETTINGS</p><Dialog.Title>Bring your own AI.</Dialog.Title><Dialog.Description>{IS_DEMO ? 'AI providers are turned off in the public demo.' : 'Your key stays saved in this browser and is sent only when you analyze a syllabus.'}</Dialog.Description></div>
             <Dialog.Close className="settings-close" aria-label="Close settings"><X aria-hidden="true" /></Dialog.Close>
           </div>
 
+          {IS_DEMO ? (
+            <section className="settings-section">
+              <div className="demo-settings-note" role="note">
+                <strong>API keys are disabled in this demo.</strong>
+                On a public host, a key you enter would pass through a server you don’t control. To keep your key and your syllabi private, the demo only uses CourseCue’s local analyzer, which runs in your browser. <a href={DEMO_QUICKSTART_URL} target="_blank" rel="noreferrer">Run CourseCue locally</a> to use OpenAI, Anthropic, or NVIDIA with your own key.
+              </div>
+            </section>
+          ) : <>
           <section className="settings-section">
             <label className="settings-label" htmlFor="api-key">API key</label>
             <div className={`key-field ${provider}`}>
@@ -87,6 +96,7 @@ export function SettingsDialog({ settings, onSave }: { settings: AiSettings; onS
             <button className="clear-key" type="button" onClick={clear} disabled={!apiKey}><Trash2 aria-hidden="true" /> Clear key</button>
             <button className={`save-settings ${saved ? 'saved' : ''}`} type="button" onClick={save} disabled={Boolean(apiKey) && provider === 'unknown'}>{saved ? <><Check aria-hidden="true" /> Saved</> : 'Save settings'}</button>
           </div>
+          </>}
 
           <footer className="settings-footer">
             <a className="github-project" href="https://github.com/ztxv/CourseCue" target="_blank" rel="noreferrer"><GitFork aria-hidden="true" /><span>View project on GitHub</span></a>

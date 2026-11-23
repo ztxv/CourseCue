@@ -190,6 +190,9 @@ async function analyzeWithNvidia(apiKey: string, model: string, sourceText: stri
 }
 
 export async function POST(request: Request) {
+  // Defense in depth: the demo build is statically exported without API routes, but
+  // if a demo-flagged build is ever served with a server, refuse to relay documents or keys.
+  if (process.env.NEXT_PUBLIC_COURSECUE_DEMO === 'true') return Response.json({ error: 'Server analysis is disabled in the public demo. Run CourseCue locally to use an AI provider.' }, { status: 403 });
   try {
     const body = await request.json() as { text?: string; fileData?: string; fileName?: string; ai?: AiConfig };
     const sourceText = (body.text || '').trim();

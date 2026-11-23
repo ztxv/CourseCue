@@ -46,6 +46,11 @@ export default defineConfig(async () => {
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
+    // Pin the public-demo flag so demo-only branches are constant-folded out of
+    // normal builds (vinext only defines NEXT_PUBLIC_* vars that are set).
+    define: {
+      'process.env.NEXT_PUBLIC_COURSECUE_DEMO': JSON.stringify(process.env.NEXT_PUBLIC_COURSECUE_DEMO ?? ''),
+    },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
