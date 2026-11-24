@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -12,15 +12,34 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const SITE_URL = 'https://course-cue.vercel.app';
+const OG_IMAGE = { url: '/og-image.png', width: 1200, height: 630, alt: 'CourseCue: Read it once. Know it all semester.' };
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'CourseCue — Your syllabus, decoded',
   description: 'Turn a course syllabus into a source-backed guide to policies, deadlines, grading, workload, and instructor information.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   openGraph: {
     title: 'CourseCue — Your syllabus, decoded',
     description: 'A source-backed syllabus workspace for students.',
     type: 'website',
+    images: [OG_IMAGE],
   },
-  twitter: { card: 'summary', title: 'CourseCue', description: 'A source-backed syllabus workspace for students.' },
+  twitter: { card: 'summary_large_image', title: 'CourseCue', description: 'A source-backed syllabus workspace for students.', images: [OG_IMAGE.url] },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f2f2ed' },
+    { media: '(prefers-color-scheme: dark)', color: '#0d1210' },
+  ],
 };
 
 export default function RootLayout({
