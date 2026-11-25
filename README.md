@@ -146,6 +146,10 @@ lib/
   types.ts                  Shared CourseCue data types
 ```
 
+## Link previews
+
+Sharing the site in iMessage, Slack, Discord, X, or LinkedIn shows a branded card (`public/og-image.png`, 1200×630). The tags live in the `metadata` and `viewport` exports of [`app/layout.tsx`](app/layout.tsx), so they are in the HTML the server returns (link-preview crawlers do not run JavaScript). Crawlers also need absolute URLs: `og:url`, `og:image`, `twitter:image`, and the canonical link are built from `SITE_URL` in that file (`https://course-cue.vercel.app`), so change that one constant if the domain changes. The card's source is [`scripts/og-image.html`](scripts/og-image.html), with its fonts in `scripts/og-fonts/`; the command to re-render it is in the file's header comment. The app icons and [`manifest.webmanifest`](public/manifest.webmanifest) are in `public/`, and the PNG icons are rasterized from `public/favicon.svg`. Apps cache previews per URL, so after a redeploy send the link with a throwaway query string (for example `?v=2`) to see the new card immediately.
+
 ## Privacy and security
 
 - Course data and original files remain in the current browser.
